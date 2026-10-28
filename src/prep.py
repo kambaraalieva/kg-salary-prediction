@@ -27,22 +27,50 @@ LEAKY = ["compensation_from", "compensation_to", "compensation_currency",
          "salary_type", "pay_period", "salary_outlier", "salary_hidden", "has_salary"]
 
 
+MONEY_WORDS = r"\b(сом\w*|тыс\w*|т\.?с\.?|usd|долл\w*|\$|руб\w*|евро|€|kgs|kzt|тенге)\b"
+
+
+def strip_money(s):
+    """Remove digits and currency words from a lowercased text Series."""
+    s = s.str.replace(r"\d+", " ", regex=True)
+    s = s.str.replace(MONEY_WORDS, " ", regex=True)
+    return s.str.replace(r"\s+", " ", regex=True).str.strip()
+
+
 def load(path=DATA):
     df = pd.read_csv(path)
     for c in CAT_FEATURES:
         df[c] = df[c].fillna("не указано").astype(str)
     for c in BOOL_FEATURES:
         df[c] = df[c].astype(int)
-    df[TEXT_FEATURE] = (df["name"].fillna("") + ". " + df["requirements"].fillna("")).str.lower()
+    # Text without numbers and currency words: ads with a visible salary often repeat it in the
+    # text ("зарплата 30 000 сом"), ads with a hidden salary do not. Keeping the numbers would let
+    # the model read the answer from the text (leakage).
+    clean = lambda s: strip_money(s.fillna("").str.lower())
+    df[TEXT_FEATURE] = clean(df["name"]) + ". " + clean(df["requirements"])
+    # richer text used from notebook 03 on: title alone + title, requirements and responsibilities
+    df["title"] = clean(df["name"])
+    df["full"] = df["title"] + ". " + clean(df["requirements"]) + ". " + clean(df["responsibilities"])
     # group key for near-duplicates: same title + same beginning of the text
     norm = lambda s: re.sub(r"[^а-яёa-z]+", " ", str(s).lower()).strip()
     df["dup_group"] = (df["name"].map(norm) + "|" + df["requirements"].fillna("").map(norm).str.slice(0, 80))
     return df
 
 
-def labeled(df):
-    """Vacancies with a plausible salary: these train and test the model."""
+def labeled(df, verbose=False):
+    """Vacancies with a plausible salary: these train and test the model.
+
+    Extra label-noise filter for lalafo: a salary more than 5x above or below the median
+    of its profession is dropped (500 000 for a seamstress, 10 000 'salary' that is a taxi fee,
+    business-for-sale ads). hh is not filtered: there such gaps are plausible
+    (e.g. a senior developer paid in USD).
+    """
     d = df[df["has_salary"]].copy()
+    ratio = d["salary_kgs"] / d.groupby("sub_category")["salary_kgs"].transform("median")
+    noise = ((ratio > 5) | (ratio < 0.2)) & (d["source"] == "lalafo")
+    if verbose:
+        print(f"Убрано как шум в разметке (lalafo, зарплата в 5+ раз от медианы профессии): {noise.sum()}")
+    d = d[~noise]
     d["y"] = np.log(d["salary_kgs"])
     return d.reset_index(drop=True)
 

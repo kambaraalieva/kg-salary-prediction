@@ -1,0 +1,39 @@
+{
+  "params": {
+    "alpha": 2.5788576144433826,
+    "word_ngram": 2,
+    "word_max": 40000,
+    "min_df": 2,
+    "char_max": 4,
+    "title_weight": 1.1444468718727123,
+    "min_freq": 2
+  },
+  "interval_log_quantiles": {
+    "headhunter": [
+      -0.4677385196599328,
+      0.49728709494941586
+    ],
+    "lalafo": [
+      -0.5227064548322788,
+      0.557089851018513
+    ]
+  },
+  "features": [
+    "category",
+    "sub_category",
+    "city",
+    "source",
+    "education",
+    "gender_req",
+    "schedule",
+    "experience_start",
+    "n_skills",
+    "text_len",
+    "remote",
+    "commission",
+    "kyrgyz_text",
+    "full",
+    "title"
+  ],
+  "trained_on": 5820
+}
