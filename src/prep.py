@@ -105,3 +105,33 @@ def metrics(y_true_log, y_pred_log):
         "доля ошибок < 20%": (err / yt < 0.2).mean(),
         "R² (log)": 1 - ss_res / ss_tot,
     }
+
+
+# ---------------------------------------------------------------- level (notebook 07)
+LEVELS = [
+    ("lead", r"\b(lead|тимлид|team ?lead|ведущ\w*|head|руководител\w*|principal|architect|архитектор)\b"),
+    ("senior", r"\b(senior|сеньор|синьор|старш\w*|sr)\b"),
+    ("middle", r"\b(middle|мидл|mid)\b"),
+    ("junior", r"\b(junior|джун\w*|младш\w*|jr|стаж[её]р\w*|intern|trainee|ассистент)\b"),
+]
+LEVEL_FROM_EXPERIENCE = {0: "junior", 1: "middle", 3: "senior", 6: "lead"}
+
+
+def title_level(title):
+    """Level written in the job title (Senior, Junior...), or None."""
+    t = str(title).lower()
+    for name, pattern in LEVELS:
+        if re.search(pattern, t):
+            return name
+    return None
+
+
+def add_level(df):
+    """level: from the title if it is there, otherwise from the required experience.
+    cat_exp / cat_level: sector x experience and sector x level, so that experience can be
+    worth more in IT than in retail."""
+    df["level_in_title"] = df["name"].map(title_level)
+    df["level"] = df["level_in_title"].fillna(df["experience_start"].map(LEVEL_FROM_EXPERIENCE)).fillna("middle")
+    df["cat_exp"] = df["category"].astype(str) + "|" + df["experience_start"].astype(str)
+    df["cat_level"] = df["category"].astype(str) + "|" + df["level"]
+    return df

@@ -49,14 +49,15 @@ class Predictor:
         row.update(category=category, sub_category=sub_category, city=city, source=source,
                    company=company.lower().strip(), experience_start=experience, n_skills=0,
                    text_len=len(text), remote=int(remote), commission=0, kyrgyz_text=0,
-                   experience_known=1, month_n=self.meta["month_n_now"])
+                   experience_known=1, month_n=self.meta["month_n_now"], name=title)
         clean = lambda s: prep.strip_money(pd.Series([s.lower()]))[0]
         row["title"] = clean(title)
         row["full"] = row["title"] + ". " + clean(text) + ". "
-        p = self.model.predict(pd.DataFrame([row]))[0]
+        x = prep.add_level(pd.DataFrame([row]))   # уровень из заголовка, а если его нет, из опыта
+        p = self.model.predict(x)[0]
         q = self.meta["interval_log_quantiles"].get(source, self.meta["interval_log_quantiles"]["telegram_codifynews"])
         r = lambda v: int(round(np.exp(v), -3))
-        return {"вакансия": title, "профессия": sub_category, "похожий заголовок": match, "опыт, лет": experience,
+        return {"вакансия": title, "профессия": sub_category, "похожий заголовок": match, "опыт, лет": experience, "уровень": x["level"][0],
                 "прогноз": r(p), "50%": (r(p + q["50%"][0]), r(p + q["50%"][1])),
                 "80%": (r(p + q["80%"][0]), r(p + q["80%"][1]))}
 
@@ -76,7 +77,7 @@ if __name__ == "__main__":
     x = a.parse_args()
     res = Predictor().predict(x.title, x.exp, x.source, x.city, x.company, x.text, x.category, x.sub_category, x.remote)
     f = lambda v: f"{v:,}".replace(",", " ")
-    print(f"\n{res['вакансия']}  (профессия: {res['профессия']}; опыт {res['опыт, лет']} г.)")
+    print(f"\n{res['вакансия']}  (профессия: {res['профессия']}; опыт {res['опыт, лет']} г.; уровень {res['уровень']})")
     print(f"  прогноз:      {f(res['прогноз'])} сом")
     print(f"  50% диапазон: {f(res['50%'][0])} – {f(res['50%'][1])} сом")
     print(f"  80% диапазон: {f(res['80%'][0])} – {f(res['80%'][1])} сом\n")
