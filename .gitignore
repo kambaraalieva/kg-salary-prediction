@@ -5,9 +5,7 @@ __pycache__/
 .env
 catboost_info/
 notebooks/catboost_info/
-
 *.session
 *.session-journal
-.env
 data/telegram/
-catboost_info/
+data/embeddings_*.npy

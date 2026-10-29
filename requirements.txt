@@ -9,3 +9,7 @@ seaborn
 joblib
 jupyter
 optuna
+python-dotenv
+telethon
+sentence-transformers
+qrcode
