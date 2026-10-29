@@ -109,12 +109,14 @@ class BlendModel:
 
     def _te_table(self, d, col):
         g = d.groupby(col)["y"].agg(["sum", "count"])
-        return (g["sum"] + self.te_k * self.gm_) / (g["count"] + self.te_k)
+        te = (g["sum"] + self.te_k * self.gm_) / (g["count"] + self.te_k)
+        # обычный dict: модель загружается в любой версии pandas
+        return {str(k): float(v) for k, v in te.items()}
 
     def _gbm_X(self, x, te):
         X = pd.DataFrame(index=x.index)
         for col in TE_COLS:
-            X["te_" + col] = te[col] if isinstance(te[col], np.ndarray) else x[col].map(te[col]).fillna(self.gm_).values
+            X["te_" + col] = te[col] if isinstance(te[col], np.ndarray) else x[col].astype(str).map(te[col]).fillna(self.gm_).values
         for c in GBM_CAT:
             X[c] = pd.Categorical(x[c].astype(str), categories=self.cats_[c])
         for c in GBM_NUM:
@@ -126,14 +128,14 @@ class BlendModel:
         w = recency_weight(d, self.half_life)
         self.ridge_ = self._ridge().fit(d, d["y"], ridge__sample_weight=w)
         if self.w_gbm > 0:
-            self.gm_ = d["y"].mean()
-            self.cats_ = {c: pd.Categorical(d[c].astype(str)).categories for c in GBM_CAT}
+            self.gm_ = float(d["y"].mean())
+            self.cats_ = {c: sorted(d[c].astype(str).unique().tolist()) for c in GBM_CAT}
             # out-of-fold target encoding for training rows (otherwise LightGBM sees its own answer)
             oof = {c: np.zeros(len(d)) for c in TE_COLS}
             for tr, va in KFold(5, shuffle=True, random_state=self.seed).split(d):
                 part = d.iloc[tr]
                 for c in TE_COLS:
-                    oof[c][va] = d.iloc[va][c].map(self._te_table(part, c)).fillna(self.gm_).values
+                    oof[c][va] = d.iloc[va][c].astype(str).map(self._te_table(part, c)).fillna(self.gm_).values
             self.te_ = {c: self._te_table(d, c) for c in TE_COLS}
             self.gbm_ = lgb.LGBMRegressor(n_estimators=600, learning_rate=0.03, num_leaves=31, min_child_samples=30,
                                           subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
