@@ -56,6 +56,9 @@ ML-модель, которая по описанию вакансии пред�
   опыт 0 / 1 / 3 / 6 лет: прогноз 50 / 79 / 116 / 136 тыс., реальные медианы 56 / 80 / 120 / 164 тыс.
   Уровень берётся из заголовка (Senior, Junior…), а если его нет, из требуемого опыта.
 - Диапазоны проверены на будущем: 50% диапазон накрыл 50% вакансий, 80% диапазон накрыл 80%.
+- **Улучшение (ноутбук 08):** формат вакансии из поля «Тип», поле «Дополнительно», больший вес свежих
+  вакансий и смесь Ridge + LightGBM: **MAE 25 191 сом** (−5,6%), медианная ошибка **15 268** (−8%),
+  80% диапазон накрыл 80% вакансий. Настройки выбраны на валидации (апрель–июнь 2026), тест открыт один раз.
 - Живой прогноз для любой вакансии:
   ```bash
   python src/predict.py "Менеджер по продажам" --exp 1
@@ -89,8 +92,11 @@ notebooks/04_error_analysis.ipynb    где и почему модель оши�
 notebooks/05_more_models.ipynb       ещё 6 семейств моделей: Huber, SVR, kNN, LightGBM, CatBoost, смесь
 notebooks/06_neural.ipynb            нейросетевые эмбеддинги текста (rubert-tiny2) против TF-IDF
 notebooks/07_time_split.ipynb        обучение на 2024–2026, проверка на вакансиях июля–октября 2026
+notebooks/08_improvements.ipynb      новые признаки, вес свежести, смесь Ridge + LightGBM (финальная модель)
+src/blend.py                         загрузка данных 2024–2026 и смешанная модель
+src/extract_codify_fields.py         поля «Тип» и «Дополнительно» из постов codifynews → data/codify_fields.csv
 data/vacancies_2024_2026.csv         объединённые данные 2024–2026 из аналитического проекта
-models/model_2026.joblib             модель для текущего рынка (с признаком времени и работодателем)
+models/model_2026.joblib             финальная модель для текущего рынка (из ноутбука 08; 07 сохраняет промежуточную)
 models/title_lookup.csv              справочник заголовков → профессия для живого прогноза
 src/predict.py                       прогноз зарплаты для одной вакансии из терминала
 src/collect_telegram.py              сбор вакансий 2026 года из Telegram-каналов (официальный API)
@@ -108,7 +114,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt          # на macOS для LightGBM также: brew install libomp
 cd notebooks
-for nb in 01_baseline 02_model_comparison 03_tuning 04_error_analysis 05_more_models 07_time_split; do
+for nb in 01_baseline 02_model_comparison 03_tuning 04_error_analysis 05_more_models 07_time_split 08_improvements; do
   jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=2400 $nb.ipynb
 done
 ```

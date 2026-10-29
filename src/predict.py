@@ -21,6 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(ROOT, "src"))
 import prep  # noqa: E402
+import blend  # noqa: E402,F401  (класс модели для joblib.load)
 
 MODELS = os.path.join(ROOT, "models")
 
@@ -41,7 +42,7 @@ class Predictor:
         return r["category"], r["sub_category"], r["title"], float(sim[i])
 
     def predict(self, title, experience=1, source="telegram_codifynews", city="Бишкек",
-                company="не указано", text="", category=None, sub_category=None, remote=0):
+                company="не указано", text="", category=None, sub_category=None, remote=0, job_type=""):
         match = None
         if sub_category is None:
             category, sub_category, match, _ = self.profession(title)
@@ -53,7 +54,18 @@ class Predictor:
         clean = lambda s: prep.strip_money(pd.Series([s.lower()]))[0]
         row["title"] = clean(title)
         row["full"] = row["title"] + ". " + clean(text) + ". "
+        if remote and not job_type:
+            job_type = "remote"
+        if source == "telegram_codifynews":
+            # в codifynews работодатель указан всегда; «не указано» там значит «новый, неизвестный модели
+            # работодатель», а не типичный работодатель kgworkzone/lalafo, где компания не пишется
+            if row["company"] == "не указано":
+                row["company"] = "__новый работодатель__"
+            job_type = job_type or "полная занятость"     # самый частый формат в канале
+        row["remote"] = int(remote or "remote" in job_type or "удал" in job_type)
+        row.update(job_type=job_type, extra="")
         x = prep.add_level(pd.DataFrame([row]))   # уровень из заголовка, а если его нет, из опыта
+        x = blend.add_fields(x)                    # формат вакансии и текст для модели 08
         p = self.model.predict(x)[0]
         q = self.meta["interval_log_quantiles"].get(source, self.meta["interval_log_quantiles"]["telegram_codifynews"])
         r = lambda v: int(round(np.exp(v), -3))
@@ -72,10 +84,11 @@ if __name__ == "__main__":
     a.add_argument("--company", default="не указано")
     a.add_argument("--text", default="", help="текст требований (по желанию)")
     a.add_argument("--remote", action="store_true")
+    a.add_argument("--type", default="", help="формат из поля «Тип»: office, remote, internship, project, полная занятость")
     a.add_argument("--sub_category", default=None)
     a.add_argument("--category", default=None)
     x = a.parse_args()
-    res = Predictor().predict(x.title, x.exp, x.source, x.city, x.company, x.text, x.category, x.sub_category, x.remote)
+    res = Predictor().predict(x.title, x.exp, x.source, x.city, x.company, x.text, x.category, x.sub_category, x.remote, x.type)
     f = lambda v: f"{v:,}".replace(",", " ")
     print(f"\n{res['вакансия']}  (профессия: {res['профессия']}; опыт {res['опыт, лет']} г.; уровень {res['уровень']})")
     print(f"  прогноз:      {f(res['прогноз'])} сом")
