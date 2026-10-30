@@ -13,3 +13,4 @@ python-dotenv
 telethon
 sentence-transformers
 qrcode
+streamlit
