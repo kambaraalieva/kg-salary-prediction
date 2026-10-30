@@ -40,13 +40,30 @@ def test_table():
     return pd.read_csv(os.path.join(APP, "test_predictions.csv"))
 
 
+MASTER = os.path.join(ROOT, "data", "vacancies_2024_2026_master.csv.gz")
+
+
+@st.cache_data
+def all_data():
+    """Мастер-датасет (kg-job-market-analysis, ноутбук 09) в названиях, которые использует страница."""
+    cols = ["reference_date", "source", "job_title", "employer", "sector", "profession", "city_group", "experience_required",
+            "salary_from", "salary_to", "currency", "salary_status", "salary_month_kgs", "url"]
+    m = pd.read_csv(MASTER, low_memory=False, usecols=cols, parse_dates=["reference_date"])
+    d = m.rename(columns={"reference_date": "published", "job_title": "name", "employer": "company", "sector": "category",
+                          "profession": "sub_category", "city_group": "city", "experience_required": "experience",
+                          "salary_from": "compensation_from", "salary_to": "compensation_to",
+                          "currency": "compensation_currency", "salary_month_kgs": "salary_kgs", "url": "link"})
+    d["has_salary"] = d["salary_kgs"].notna()
+    d["salary_hidden"] = d["salary_status"] == "скрыта"
+    d["год"] = d["published"].dt.year
+    return d
+
+
 @st.cache_data
 def market_2026():
     """Реальные зарплаты 2026 года по профессиям: для сравнения с прогнозом."""
-    d = pd.read_csv(os.path.join(ROOT, "data", "vacancies_2024_2026.csv"), low_memory=False,
-                    usecols=["sub_category", "published", "has_salary", "salary_kgs", "source"])
-    d = d[d["has_salary"] & (d["published"] >= "2026-01-01")]
-    return d
+    d = all_data()
+    return d[d["has_salary"] & (d["published"] >= "2026-01-01")]
 
 
 def image(name, caption=None):
@@ -60,7 +77,83 @@ st.title("💼 Зарплаты в вакансиях Кыргызстана")
 st.caption(f"Модель обучена на {S['n_total']:,} вакансиях с зарплатой".replace(",", " ")
            + " (hh, lalafo, Telegram), январь 2024 – октябрь 2026.")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔮 Оценить вакансию", "📏 Точность модели", "🧪 Проверка на свежих вакансиях", "📈 Рынок 2024–2026"])
+tab0, tab1, tab2, tab3, tab4 = st.tabs(["🗂 Данные", "🔮 Оценить вакансию", "📏 Точность модели",
+                                        "🧪 Проверка на свежих вакансиях", "📈 Рынок 2024–2026"])
+
+# ------------------------------------------------------------------ 0. данные
+with tab0:
+    D = all_data()
+    st.subheader("Откуда данные")
+    st.markdown("""
+| Источник | Что это | Период | Как получены |
+|---|---|---|---|
+| **hh.kg, lalafo.kg** | открытый датасет School of Data Kyrgyzstan «Кыргызстан в цифрах» | февраль–март 2024 | скачан с datakyrgyzstan.opendata.kg |
+| **Telegram @codifynews** | офисные, IT, продажи, маркетинг; посты по шаблону | январь 2024 – октябрь 2026 | официальный Telegram API (Telethon) |
+| **Telegram @kgworkzone** | сфера услуг Бишкека: общепит, торговля, склады | ноябрь 2025 – октябрь 2026 | официальный Telegram API |
+""")
+    c = st.columns(4)
+    c[0].metric("Вакансий", f"{len(D):,}".replace(",", " "))
+    c[1].metric("С зарплатой", f"{D['has_salary'].sum():,}".replace(",", " "))
+    c[2].metric("Зарплата скрыта", f"{D['salary_hidden'].mean():.0%}")
+    c[3].metric("Месяцев без пропусков", D["published"].dt.to_period("M").nunique())
+    st.caption("Мастер-датасет: единые правила для всех источников, даты во времени Бишкека, неуказанный опыт и город "
+               "остаются пустыми. Правила: kg-job-market-analysis, src/dataset.py и ноутбук 09.")
+
+    a, b = st.columns([1, 1.2])
+    with a:
+        st.caption("Вакансий по источникам и годам (в скобках: с зарплатой)")
+        n = pd.crosstab(D["source"].rename("источник"), D["год"])
+        k = pd.crosstab(D["source"].rename("источник"), D["год"], values=D["has_salary"], aggfunc="sum").fillna(0).astype(int)
+        st.dataframe(n.astype(str).where(n == 0, n.astype(str) + " (" + k.astype(str) + ")").replace("0", "–"),
+                     use_container_width=True)
+    with b:
+        st.caption("Вакансий в месяц")
+        m = D.groupby([D["published"].dt.to_period("M").astype(str), "source"]).size().unstack(fill_value=0)
+        st.bar_chart(m, height=260)
+
+    st.subheader("Как пост превращается в строку таблицы")
+    st.code("""Senior IOS Developer
+Компания: ЗАО "Банк Компаньон"
+ЗП: От 180000 KGS в месяц
+Тип: office""", language=None)
+    st.markdown("→ **вакансия:** Senior IOS Developer · **работодатель:** ЗАО «Банк Компаньон» · **зарплата от:** 180 000 · "
+                "**валюта:** KGS · **период:** месяц · **уровень:** senior · **сфера и профессия:** определяются классификатором "
+                "по заголовку · **итоговая зарплата:** 180 000 сом в месяц")
+    st.caption("Очистка: валюты переводятся в сомы по курсу НБКР, дневные и почасовые ставки в месячные, "
+               "неправдоподобные зарплаты (меньше 10 тыс. или больше 600 тыс.) убираются, повторы удаляются. "
+               "Подробно: репозиторий kg-job-market-analysis, ноутбуки 02 и 07.")
+
+    st.subheader("Сами данные")
+    f1, f2, f3, f4 = st.columns(4)
+    src = f1.multiselect("Источник", sorted(D["source"].dropna().unique()))
+    yr = f2.multiselect("Год", sorted(D["год"].unique()))
+    q = f3.text_input("Поиск по названию вакансии", "", key="data_q")
+    only = f4.checkbox("Только с зарплатой", value=True)
+    v = D
+    if src:
+        v = v[v["source"].isin(src)]
+    if yr:
+        v = v[v["год"].isin(yr)]
+    if q:
+        v = v[v["name"].str.contains(q, case=False, na=False)]
+    if only:
+        v = v[v["has_salary"]]
+    st.caption(f"Найдено: {len(v):,}".replace(",", " ") + (f" · медианная зарплата {som(v['salary_kgs'].median())}" if v["has_salary"].any() else ""))
+    show = v.sort_values("published", ascending=False)[[
+        "published", "source", "name", "company", "sub_category", "city", "experience",
+        "compensation_from", "compensation_to", "compensation_currency", "salary_kgs", "link"]].rename(columns={
+        "published": "дата", "source": "источник", "name": "вакансия", "company": "работодатель", "sub_category": "профессия",
+        "city": "город", "experience": "опыт", "compensation_from": "зарплата от", "compensation_to": "зарплата до",
+        "compensation_currency": "валюта", "salary_kgs": "итог, сом/мес", "link": "ссылка"})
+    st.dataframe(show.head(2000), hide_index=True, use_container_width=True, height=480,
+                 column_config={"дата": st.column_config.DatetimeColumn(format="YYYY-MM-DD"),
+                                "ссылка": st.column_config.LinkColumn(display_text="открыть"),
+                                "зарплата от": st.column_config.NumberColumn(format="%d"),
+                                "зарплата до": st.column_config.NumberColumn(format="%d"),
+                                "итог, сом/мес": st.column_config.NumberColumn(format="%d")})
+    st.caption("Показаны первые 2 000 строк по фильтру. Полный файл: data/vacancies_2024_2026_master.csv.gz "
+               "(Excel со словарём и правилами: репозиторий kg-job-market-analysis).")
+    st.download_button("Скачать выборку (CSV)", show.to_csv(index=False).encode("utf-8-sig"), "vacancies_selection.csv", "text/csv")
 
 # ------------------------------------------------------------------ 1. прогноз
 with tab1:
@@ -117,12 +210,12 @@ with tab2:
 
     st.subheader("Сравнение моделей (MAE на вакансиях июля–октября 2026)")
     comp = pd.DataFrame([
-        ["Медиана рынка за последние 6 месяцев", 34365, 20000, "простейший ориентир"],
-        ["Медиана профессии за последние 6 месяцев", 30886, 20000, "базовая линия"],
-        ["Модель 2024 года без переобучения", 39072, 24666, "занижает на 36%: зарплаты выросли"],
-        ["Ridge + TF-IDF, обучение 2024–2026", 27780, 17520, "ноутбук 07"],
-        ["+ месяц публикации, работодатель, уровень", 26693, 16541, "ноутбук 07"],
-        ["+ формат вакансии, вес свежих вакансий", 25745, 16155, "ноутбук 08"],
+        ["Медиана рынка за последние 6 месяцев", 33118, 20000, "простейший ориентир"],
+        ["Медиана профессии за последние 6 месяцев", 29808, 20000, "базовая линия"],
+        ["Модель 2024 года без переобучения", 38210, 24026, "занижает на 36%: зарплаты выросли"],
+        ["Ridge + TF-IDF, обучение 2024–2026", 26877, 16704, "ноутбук 07"],
+        ["+ месяц публикации, работодатель, уровень", 25431, 15898, "ноутбук 07"],
+        ["+ формат вакансии, вес свежих вакансий", 24753, 15372, "ноутбук 08"],
         ["+ смесь с LightGBM (финальная)", round(S["mae"]), round(S["median_error"]), "ноутбук 08"],
     ], columns=["модель", "MAE, сом", "медианная ошибка, сом", "комментарий"])
     st.dataframe(comp.style.format({"MAE, сом": "{:,.0f}", "медианная ошибка, сом": "{:,.0f}"}), hide_index=True,
@@ -167,16 +260,17 @@ with tab3:
     if len(v):
         c[1].metric("Медианная ошибка", som(v["ошибка, сом"].median()))
         c[2].metric("В 80% диапазоне", f"{v['в 80% диапазоне'].mean():.0%}")
-    show = v[["дата", "вакансия", "работодатель", "канал", "опыт, лет", "реальная зарплата", "прогноз", "80% от", "80% до",
+    show = v[["дата", "вакансия", "ссылка", "работодатель", "канал", "опыт, лет", "реальная зарплата", "прогноз", "80% от", "80% до",
               "ошибка, %", "в 80% диапазоне"]]
     st.dataframe(show.style.format({"реальная зарплата": "{:,.0f}", "прогноз": "{:,.0f}", "80% от": "{:,.0f}",
                                     "80% до": "{:,.0f}", "ошибка, %": "{:+.0f}"}),
-                 hide_index=True, use_container_width=True, height=520)
+                 hide_index=True, use_container_width=True, height=520,
+                 column_config={"ссылка": st.column_config.LinkColumn("пост", display_text="открыть")})
 
 # ------------------------------------------------------------------ 4. рынок
 with tab4:
     c = st.columns(4)
-    c[0].metric("Вакансий в данных", "44 656")
+    c[0].metric("Вакансий с 2024 года", f"{len(all_data()):,}".replace(",", " "))
     c[1].metric("Скрывают зарплату (2024)", "52%")
     c[2].metric("Рост зарплат в вакансиях", "+31%", help="та же вакансия, I кв. 2024 → конец 2026, с поправкой на состав")
     c[3].metric("Официальная средняя зарплата", "+61%", help="Нацстатком: 34 046 → 54 864 сом")

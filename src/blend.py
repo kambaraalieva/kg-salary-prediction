@@ -43,18 +43,13 @@ def add_fields(df):
     return df
 
 
-def load_2026(path=os.path.join(ROOT, "data", "vacancies_2024_2026.csv"),
-              fields=os.path.join(ROOT, "data", "codify_fields.csv"), verbose=True):
-    """All vacancies since 2024 (df) and the labeled, de-duplicated part (d)."""
-    df = prep.load(path)
-    df["published"] = pd.to_datetime(df["published"])
+def load_2026(path=os.path.join(ROOT, "data", "vacancies_2024_2026_master.csv.gz"), verbose=True):
+    """All vacancies since 2024 (df) and the labeled, de-duplicated part (d), from the master dataset."""
+    df = prep.load_master(path)
     df = df[df["published"] >= "2024-01-01"].copy()
     df["company"] = df["company"].fillna("не указано").astype(str).str.lower().str.strip()
-    df["experience_known"] = df["experience_known"].fillna(True).astype(int)
     df["month_n"] = (df["published"].dt.year - 2024) * 12 + df["published"].dt.month - 1
     df = prep.add_level(df)
-    if os.path.exists(fields):
-        df = df.merge(pd.read_csv(fields, dtype=str).fillna(""), on="link", how="left")
     df = add_fields(df)
 
     d = df[df["has_salary"]].copy()

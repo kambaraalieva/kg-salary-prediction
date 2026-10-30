@@ -131,7 +131,57 @@ def add_level(df):
     cat_exp / cat_level: sector x experience and sector x level, so that experience can be
     worth more in IT than in retail."""
     df["level_in_title"] = df["name"].map(title_level)
-    df["level"] = df["level_in_title"].fillna(df["experience_start"].map(LEVEL_FROM_EXPERIENCE)).fillna("middle")
+    # experience_start = -1 means «not stated»: then the level is unknown too, nothing is assumed
+    df["level"] = df["level_in_title"].fillna(df["experience_start"].map(LEVEL_FROM_EXPERIENCE)).fillna("не указан")
     df["cat_exp"] = df["category"].astype(str) + "|" + df["experience_start"].astype(str)
     df["cat_level"] = df["category"].astype(str) + "|" + df["level"]
+    return df
+
+
+# ---------------------------------------------------------------- master dataset (kg-job-market-analysis, notebook 09)
+MASTER = "../data/vacancies_2024_2026_master.csv.gz"
+SOURCE_KEY = {"hh.kg": "headhunter", "lalafo.kg": "lalafo",
+              "Telegram @codifynews": "telegram_codifynews", "Telegram @kgworkzone": "telegram_kgworkzone"}
+
+
+def load_master(path=MASTER):
+    """Master dataset in the column names the models use.
+
+    Empty values stay empty in the data. Inside the model only:
+      experience_start = -1 and experience_known = 0 when experience is not stated,
+      city / education / gender / schedule = «не указано».
+    Text for the model: title + additional_info (everything in the ad except the salary line and the employer line),
+    with digits and currency words removed (see strip_money)."""
+    m = pd.read_csv(path, low_memory=False, parse_dates=["reference_date", "published_at"])
+    df = pd.DataFrame({
+        "id": m["vacancy_id"], "link": m["url"], "published": m["reference_date"],
+        "source": m["source"].map(SOURCE_KEY), "name": m["job_title"], "company": m["employer"],
+        "category": m["sector"], "sub_category": m["profession"],
+        "city": m["city_group"], "area": m["locality"],
+        "experience_start": m["experience_min_years"].fillna(-1).astype(int),
+        "experience_known": m["experience_min_years"].notna().astype(int),
+        "education": m["education_required"], "gender_req": m["gender_required"], "schedule": m["schedule"],
+        "remote": (m["work_format"] == "удалённо или гибрид"), "commission": m["commission_or_bonus"].astype(bool),
+        "skills": m["skills"], "requirements": m["additional_info"], "responsibilities": "",
+        "job_type": m["work_format_raw"], "extra": "",
+        "compensation_from": m["salary_from"], "compensation_to": m["salary_to"], "compensation_currency": m["currency"],
+        "salary_status": m["salary_status"], "salary_kgs": m["salary_month_kgs"],
+        "times_published": m["times_published"],
+    })
+    df["has_salary"] = df["salary_kgs"].notna()
+    df["salary_hidden"] = df["salary_status"] == "скрыта"
+    text = (df["name"].fillna("") + " " + df["requirements"].fillna("")).str.lower()
+    df["kyrgyz_text"] = text.str.contains("[өүң]")
+    df["n_skills"] = df["skills"].fillna("").str.split(",").map(lambda xs: len([x for x in xs if x.strip()]))
+    df["text_len"] = df["requirements"].fillna("").str.len()
+    for c in CAT_FEATURES:
+        df[c] = df[c].fillna("не указано").astype(str)
+    for c in BOOL_FEATURES:
+        df[c] = df[c].astype(int)
+    clean = lambda s: strip_money(s.fillna("").str.lower())
+    df[TEXT_FEATURE] = clean(df["name"]) + ". " + clean(df["requirements"])
+    df["title"] = clean(df["name"])
+    df["full"] = df["title"] + ". " + clean(df["requirements"])
+    norm = lambda s: re.sub(r"[^а-яёa-z]+", " ", str(s).lower()).strip()
+    df["dup_group"] = (df["name"].map(norm) + "|" + df["requirements"].fillna("").map(norm).str.slice(0, 80))
     return df
