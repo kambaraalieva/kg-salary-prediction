@@ -69,7 +69,7 @@ def market_2026():
 def image(name, caption=None):
     path = os.path.join(FIG, name)
     if os.path.exists(path):
-        st.image(path, caption=caption, use_container_width=True)
+        st.image(path, caption=caption, width="stretch")
 
 
 S = summary()
@@ -105,7 +105,7 @@ with tab0:
         n = pd.crosstab(D["source"].rename("источник"), D["год"])
         k = pd.crosstab(D["source"].rename("источник"), D["год"], values=D["has_salary"], aggfunc="sum").fillna(0).astype(int)
         st.dataframe(n.astype(str).where(n == 0, n.astype(str) + " (" + k.astype(str) + ")").replace("0", "–"),
-                     use_container_width=True)
+                     width="stretch")
     with b:
         st.caption("Вакансий в месяц")
         m = D.groupby([D["published"].dt.to_period("M").astype(str), "source"]).size().unstack(fill_value=0)
@@ -145,7 +145,7 @@ with tab0:
         "published": "дата", "source": "источник", "name": "вакансия", "company": "работодатель", "sub_category": "профессия",
         "city": "город", "experience": "опыт", "compensation_from": "зарплата от", "compensation_to": "зарплата до",
         "compensation_currency": "валюта", "salary_kgs": "итог, сом/мес", "link": "ссылка"})
-    st.dataframe(show.head(2000), hide_index=True, use_container_width=True, height=480,
+    st.dataframe(show.head(2000), hide_index=True, width="stretch", height=480,
                  column_config={"дата": st.column_config.DatetimeColumn(format="YYYY-MM-DD"),
                                 "ссылка": st.column_config.LinkColumn(display_text="открыть"),
                                 "зарплата от": st.column_config.NumberColumn(format="%d"),
@@ -219,7 +219,7 @@ with tab2:
         ["+ смесь с LightGBM (финальная)", round(S["mae"]), round(S["median_error"]), "ноутбук 08"],
     ], columns=["модель", "MAE, сом", "медианная ошибка, сом", "комментарий"])
     st.dataframe(comp.style.format({"MAE, сом": "{:,.0f}", "медианная ошибка, сом": "{:,.0f}"}), hide_index=True,
-                 use_container_width=True)
+                 width="stretch")
     st.caption("Числа из ноутбуков 07 и 08; при повторном обучении LightGBM они могут сдвинуться на несколько сомов.")
     a, b = st.columns(2)
     with a:
@@ -234,7 +234,7 @@ with tab2:
     seg = t.groupby("уровень зарплаты", observed=True).agg(вакансий=("прогноз", "size"),
                                                            медианная_ошибка=("ошибка, сом", "median"),
                                                            в_80_диапазоне=("в 80% диапазоне", "mean"))
-    st.dataframe(seg.style.format({"медианная_ошибка": "{:,.0f}", "в_80_диапазоне": "{:.0%}"}), use_container_width=True)
+    st.dataframe(seg.style.format({"медианная_ошибка": "{:,.0f}", "в_80_диапазоне": "{:.0%}"}), width="stretch")
     st.write("Точнее всего для типичных зарплат 40–100 тыс. Редкие дорогие вакансии модель занижает, "
              "очень дешёвые завышает: она тянет крайние значения к середине.")
 
@@ -264,7 +264,7 @@ with tab3:
               "ошибка, %", "в 80% диапазоне"]]
     st.dataframe(show.style.format({"реальная зарплата": "{:,.0f}", "прогноз": "{:,.0f}", "80% от": "{:,.0f}",
                                     "80% до": "{:,.0f}", "ошибка, %": "{:+.0f}"}),
-                 hide_index=True, use_container_width=True, height=520,
+                 hide_index=True, width="stretch", height=520,
                  column_config={"ссылка": st.column_config.LinkColumn("пост", display_text="открыть")})
 
 # ------------------------------------------------------------------ 4. рынок
@@ -272,11 +272,11 @@ with tab4:
     c = st.columns(4)
     c[0].metric("Вакансий с 2024 года", f"{len(all_data()):,}".replace(",", " "))
     c[1].metric("Скрывают зарплату (2024)", "52%")
-    c[2].metric("Рост зарплат в вакансиях", "+31%", help="та же вакансия, I кв. 2024 → конец 2026, с поправкой на состав")
+    c[2].metric("Рост зарплат в вакансиях", "+33%", help="та же вакансия, I кв. 2024 → конец 2026, с поправкой на состав")
     c[3].metric("Официальная средняя зарплата", "+61%", help="Нацстатком: 34 046 → 54 864 сом")
     a, b = st.columns(2)
     with a:
-        image("market_08_index.png", "Та же вакансия подорожала на ~31%; официальная средняя выросла сильнее")
+        image("market_08_index.png", "Та же вакансия подорожала на ~33%; официальная средняя выросла сильнее")
         image("market_08_shares.png", "Доля скрытых зарплат и состав вакансий по кварталам (codifynews)")
     with b:
         image("market_08_professions.png", "Изменение зарплат по профессиям, 2024 → 2026")
